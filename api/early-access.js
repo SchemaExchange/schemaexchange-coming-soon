@@ -22,6 +22,68 @@ function sameSig(a, b) {
 
 const text = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
+// The email (owner, 2026-11-06: "a centred box, logo on top, SCHEMA EXCHANGE under it, the details, a footer, the
+// page's dotted background"). Email apps only understand tables + inline styles, and block SVG / CSS patterns, so
+// the logo and the dot tile are PNGs on the site. Everything a visitor typed is escaped: no HTML gets through.
+const SITE = "https://schemaexchange.com";
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function siteLink(website) {
+  const host = website.replace(/^https?:\/\//i, "").split(/[/?#\s]/)[0];
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return esc(website); // not an address: show it as plain text
+  return `<a href="https://${esc(host)}" style="color:#3fd0d4;text-decoration:none">${esc(website)}</a>`;
+}
+
+function emailHtml({ name, email, website, message }) {
+  const font = "font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif";
+  const row = (label, value) => `
+    <tr><td style="padding:12px 0;border-top:1px solid #12323a;${font}">
+      <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8aa7ac">${label}</div>
+      <div style="margin-top:4px;font-size:15px;line-height:1.5;color:#e8f3f4">${value}</div>
+    </td></tr>`;
+  const first = esc(name.split(/\s+/)[0]);
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Early access request</title></head>
+<body style="margin:0;padding:0;background:#020d10">
+<div style="display:none;max-height:0;overflow:hidden">${esc(name)} asked for early access${website ? ` (${esc(website)})` : ""}.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#020d10" background="${SITE}/email-dots.png"
+  style="background:#020d10 url('${SITE}/email-dots.png') repeat">
+<tr><td align="center" style="padding:40px 16px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px">
+  <tr><td align="center" style="padding-bottom:8px">
+    <img src="${SITE}/email-logo.png" width="112" height="112" alt="SchemaExchange" style="display:block;border:0">
+  </td></tr>
+  <tr><td align="center" style="padding-bottom:24px;${font};font-size:13px;font-weight:600;letter-spacing:4px;color:#e8f3f4">SCHEMA EXCHANGE</td></tr>
+  <tr><td bgcolor="#061a1f" style="background:#061a1f;border:1px solid #12323a;border-radius:24px;padding:28px 28px 24px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td style="${font};padding-bottom:6px">
+        <div style="display:inline-block;border:1px solid #1d5d63;border-radius:999px;padding:4px 12px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:#3fd0d4">Early access</div>
+        <div style="margin-top:14px;font-size:22px;font-weight:700;color:#ffffff">New early access request</div>
+        <div style="margin-top:6px;font-size:14px;line-height:1.6;color:#b9cfd2">${esc(name)} would like to try SchemaExchange.</div>
+      </td></tr>
+      ${row("Name", esc(name))}
+      ${row("Email", `<a href="mailto:${esc(email)}" style="color:#3fd0d4;text-decoration:none">${esc(email)}</a>`)}
+      ${row("Website", website ? siteLink(website) : `<span style="color:#8aa7ac">Not given</span>`)}
+      <tr><td style="padding:12px 0 4px;border-top:1px solid #12323a;${font}">
+        <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8aa7ac">Message</div>
+        <div style="margin-top:8px;padding:14px 16px;background:#020d10;border:1px solid #12323a;border-radius:16px;font-size:15px;line-height:1.6;color:#e8f3f4;white-space:pre-wrap">${message ? esc(message) : `<span style="color:#8aa7ac">No message</span>`}</div>
+      </td></tr>
+      <tr><td align="center" style="padding-top:22px">
+        <a href="mailto:${esc(email)}?subject=${encodeURIComponent("Your SchemaExchange early access")}" style="display:inline-block;background:#3fd0d4;color:#020d10;${font};font-size:15px;font-weight:600;text-decoration:none;border-radius:999px;padding:12px 26px">Reply to ${first}</a>
+      </td></tr>
+    </table>
+  </td></tr>
+  <tr><td align="center" style="padding:22px 8px 0;${font};font-size:12px;line-height:1.7;color:#8aa7ac">
+    Sent from the early-access form on <a href="${SITE}" style="color:#8aa7ac">schemaexchange.com</a>.<br>
+    Pressing Reply answers ${esc(name)} directly.<br>© ${new Date().getFullYear()} SchemaExchange
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (!process.env.FORM_SECRET || !process.env.RESEND_API_KEY) return res.status(500).json({ error: "setup" });
@@ -46,7 +108,7 @@ module.exports = async function handler(req, res) {
   const sent = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to: [TO], reply_to: email, subject: `Early access request from ${name}`, text: lines.join("\n") }),
+    body: JSON.stringify({ from: FROM, to: [TO], reply_to: email, subject: `Early access request from ${name}`, html: emailHtml({ name, email, website, message }), text: lines.join("\n") }),
   }).catch(() => null);
   if (!sent || !sent.ok) {
     console.error("early-access: Resend refused", sent && sent.status, sent && (await sent.text().catch(() => "")));
