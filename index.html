@@ -135,7 +135,7 @@
     <label><span>Email address <b class="req" aria-hidden="true">*</b></span><input name="email" type="email" required autocomplete="email" /></label>
     <label><span>Your website <em class="opt">(optional)</em></span><input name="website" placeholder="yourwebsite.com" /></label>
     <label><span>Anything you'd like to tell us? <em class="opt">(optional)</em></span><textarea name="message"></textarea></label>
-    <label><span>Quick check, what is <span class="sum" id="sum">4 + 7</span>? <b class="req" aria-hidden="true">*</b></span><input name="check" inputmode="numeric" pattern="[0-9]*" maxlength="3" required autocomplete="off" /></label>
+    <label><span>Quick check, what is <span class="sum" id="sum">…</span>? <b class="req" aria-hidden="true">*</b></span><input name="check" inputmode="numeric" pattern="[0-9]*" maxlength="3" required autocomplete="off" /></label>
     <input class="hp" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true" />
     <p class="muted" style="margin:0">By sending this you agree to our <button type="button" class="link" data-open="privacy" style="color:var(--glow)">privacy policy</button>.</p>
     <div class="status" role="status"></div>
@@ -150,7 +150,7 @@
 <h3>Who we are</h3>
 <p>SchemaExchange (schemaexchange.com). For anything about your data, write to <a href="mailto:privacy@schemaexchange.com">privacy@schemaexchange.com</a>.</p>
 <h3>Services that help run this page</h3>
-<p>The page is hosted by Vercel, whose servers see your IP address to deliver it and keep short technical logs. The form is delivered to our inbox by FormSubmit (formsubmit.co), an email forwarding service. The typeface comes from Google Fonts, which also sees your IP address. These services may process data in the United States.</p>
+<p>The page is hosted by Vercel, whose servers see your IP address to deliver it and keep short technical logs. The form is delivered to our inbox by Resend (resend.com), our email delivery service. The typeface comes from Google Fonts, which also sees your IP address. These services may process data in the United States.</p>
 <h3>How long we keep it</h3>
 <p>Until launch, and afterwards only if you choose to create an account. Ask us to delete it at any time.</p>
 <h3>Your rights</h3>
@@ -197,32 +197,39 @@
     phrases[now].classList.add("on");
   }, 3000);
 
-  // Early access: sent to hello@schemaexchange.com through FormSubmit; the answer shows in the popup.
-  // The quick check: a new small sum each time the popup opens (and after a wrong answer).
-  var answer = 0, openedAt = Date.now();
+  // Early access: sent by our own function (api/early-access.js → Resend → hello@); the answer shows in the popup.
+  // The quick check comes from the server (signed), so it's checked there too. A new sum each time the popup opens.
+  var form = document.getElementById("access-form"), note = form.querySelector(".status"), send = form.querySelector("button[type=submit]");
+  var sum = document.getElementById("sum"), ticket = null;
+  function say(kind, msg) { note.className = "status " + kind; note.textContent = msg; }
   function newSum() {
-    var a = 2 + Math.floor(Math.random() * 8), b = 1 + Math.floor(Math.random() * 9);
-    answer = a + b; document.getElementById("sum").textContent = a + " + " + b;
+    ticket = null; sum.textContent = "…";
+    return fetch("/api/early-access", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+      .then(function (r) { ticket = r; sum.textContent = r.q; })
+      .catch(function () { sum.textContent = "?"; say("err", "The quick check couldn't load. Please reload the page."); });
   }
   newSum();
-  document.querySelectorAll('[data-open="access"]').forEach(function (b) { b.addEventListener("click", function () { newSum(); openedAt = Date.now(); }); });
-  var form = document.getElementById("access-form"), note = form.querySelector(".status"), send = form.querySelector("button[type=submit]");
+  document.querySelectorAll('[data-open="access"]').forEach(function (b) { b.addEventListener("click", function () { say("", ""); newSum(); }); });
+  var MESSAGES = {
+    check: "The answer to the quick check isn't right. Please try the new sum.",
+    fast: "That was very quick! Please check your details and press the button again.",
+    fields: "Please enter your name and a valid email address.",
+  };
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var data = Object.fromEntries(new FormData(form));
     if (data._honey) return;
-    // Bots fill forms in an instant and can't do the sum: refuse both before anything is sent.
-    if (Date.now() - openedAt < 3000) { note.className = "status err"; note.textContent = "That was very quick! Please check your details and press the button again."; return; }
-    if (Number(data.check) !== answer) { note.className = "status err"; note.textContent = "The answer to the quick check isn't right. Please try the new sum."; newSum(); form.check.value = ""; form.check.focus(); return; }
-    delete data.check;
-    data._subject = "Early access request · SchemaExchange";
-    data._template = "table";
-    send.disabled = true; send.textContent = "Sending…"; note.textContent = ""; note.className = "status";
-    fetch("https://formsubmit.co/ajax/hello@schemaexchange.com", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(data) })
-      .then(function (r) { return r.json(); })
+    if (!ticket) { newSum(); return; }
+    data.t = ticket.t; data.sig = ticket.sig;
+    send.disabled = true; send.textContent = "Sending…"; say("", "");
+    fetch("/api/early-access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (r) {
-        if (String(r.success) !== "true") throw new Error(r.message || "failed");
-        form.reset(); newSum(); note.className = "status ok"; note.textContent = "Thank you! We'll email you as soon as early access opens.";
+        if (r.ok) { form.reset(); newSum(); say("ok", "Thank you! We'll email you as soon as early access opens."); return; }
+        if (r.error === "check") { newSum(); form.check.value = ""; form.check.focus(); }
+        if (MESSAGES[r.error]) return say("err", MESSAGES[r.error]);
+        throw new Error();
       })
       .catch(function () {
         note.className = "status err";
