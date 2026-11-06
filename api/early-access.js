@@ -51,10 +51,9 @@ function emailHtml({ name, email, website, message }) {
   style="background:#020d10 url('${SITE}/email-dots.png') repeat">
 <tr><td align="center" style="padding:40px 16px">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px">
-  <tr><td align="center" style="padding-bottom:8px">
-    <img src="${SITE}/email-logo.png" width="112" height="112" alt="SchemaExchange" style="display:block;border:0">
+  <tr><td align="center" style="padding-bottom:28px">
+    <img src="${SITE}/email-lockup.png" width="166" height="50" alt="SchemaExchange" style="display:block;border:0">
   </td></tr>
-  <tr><td align="center" style="padding-bottom:24px;${font};font-size:13px;font-weight:600;letter-spacing:4px;color:#e8f3f4">SCHEMA EXCHANGE</td></tr>
   <tr><td bgcolor="#061a1f" style="background:#061a1f;border:1px solid #12323a;border-radius:24px;padding:28px 28px 24px">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr><td style="${font};padding-bottom:6px">
