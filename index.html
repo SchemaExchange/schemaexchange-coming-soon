@@ -99,6 +99,8 @@
   textarea { border-radius: 18px; min-height: 96px; resize: vertical; }
   input:focus, textarea:focus { border-color: rgba(63,208,212,0.6); }
   .opt { font-style: normal; color: var(--muted); opacity: .75; }
+  .req { color: var(--glow); font-weight: 600; }
+  .sum { color: var(--text); font-weight: 600; }
   .hp { position: absolute; left: -9999px; }
   .status { min-height: 20px; font-size: 14px; }
   .status.ok { color: var(--ok); } .status.err { color: var(--red); }
@@ -129,10 +131,11 @@
   <h2 id="access-title">Get early access</h2>
   <p>Be among the first to scan and fix your website with SchemaExchange. We'll email you when early access opens.</p>
   <form id="access-form">
-    <label><span>Your name</span><input name="name" required autocomplete="name" /></label>
-    <label><span>Email address</span><input name="email" type="email" required autocomplete="email" /></label>
+    <label><span>Your name <b class="req" aria-hidden="true">*</b></span><input name="name" required autocomplete="name" /></label>
+    <label><span>Email address <b class="req" aria-hidden="true">*</b></span><input name="email" type="email" required autocomplete="email" /></label>
     <label><span>Your website <em class="opt">(optional)</em></span><input name="website" placeholder="yourwebsite.com" /></label>
     <label><span>Anything you'd like to tell us? <em class="opt">(optional)</em></span><textarea name="message"></textarea></label>
+    <label><span>Quick check, what is <span class="sum" id="sum">4 + 7</span>? <b class="req" aria-hidden="true">*</b></span><input name="check" inputmode="numeric" pattern="[0-9]*" maxlength="3" required autocomplete="off" /></label>
     <input class="hp" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true" />
     <p class="muted" style="margin:0">By sending this you agree to our <button type="button" class="link" data-open="privacy" style="color:var(--glow)">privacy policy</button>.</p>
     <div class="status" role="status"></div>
@@ -195,23 +198,35 @@
   }, 3000);
 
   // Early access: sent to hello@schemaexchange.com through FormSubmit; the answer shows in the popup.
-  var form = document.getElementById("access-form"), status = form.querySelector(".status"), send = form.querySelector("button[type=submit]");
+  // The quick check: a new small sum each time the popup opens (and after a wrong answer).
+  var answer = 0, openedAt = Date.now();
+  function newSum() {
+    var a = 2 + Math.floor(Math.random() * 8), b = 1 + Math.floor(Math.random() * 9);
+    answer = a + b; document.getElementById("sum").textContent = a + " + " + b;
+  }
+  newSum();
+  document.querySelectorAll('[data-open="access"]').forEach(function (b) { b.addEventListener("click", function () { newSum(); openedAt = Date.now(); }); });
+  var form = document.getElementById("access-form"), note = form.querySelector(".status"), send = form.querySelector("button[type=submit]");
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var data = Object.fromEntries(new FormData(form));
     if (data._honey) return;
+    // Bots fill forms in an instant and can't do the sum: refuse both before anything is sent.
+    if (Date.now() - openedAt < 3000) { note.className = "status err"; note.textContent = "That was very quick! Please check your details and press the button again."; return; }
+    if (Number(data.check) !== answer) { note.className = "status err"; note.textContent = "The answer to the quick check isn't right. Please try the new sum."; newSum(); form.check.value = ""; form.check.focus(); return; }
+    delete data.check;
     data._subject = "Early access request · SchemaExchange";
     data._template = "table";
-    send.disabled = true; send.textContent = "Sending…"; status.textContent = ""; status.className = "status";
+    send.disabled = true; send.textContent = "Sending…"; note.textContent = ""; note.className = "status";
     fetch("https://formsubmit.co/ajax/hello@schemaexchange.com", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(data) })
       .then(function (r) { return r.json(); })
       .then(function (r) {
         if (String(r.success) !== "true") throw new Error(r.message || "failed");
-        form.reset(); status.className = "status ok"; status.textContent = "Thank you! We'll email you as soon as early access opens.";
+        form.reset(); newSum(); note.className = "status ok"; note.textContent = "Thank you! We'll email you as soon as early access opens.";
       })
       .catch(function () {
-        status.className = "status err";
-        status.innerHTML = "Sorry, that didn't go through. Please try again, or email us at <a href=\"mailto:hello@schemaexchange.com\">hello@schemaexchange.com</a>.";
+        note.className = "status err";
+        note.innerHTML = "Sorry, that didn't go through. Please try again, or email us at <a href=\"mailto:hello@schemaexchange.com\">hello@schemaexchange.com</a>.";
       })
       .finally(function () { send.disabled = false; send.textContent = "Request early access"; });
   });
